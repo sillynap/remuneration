@@ -42,11 +42,14 @@ class RemuRepository(context: Context) {
         put("id", e.id); put("date", e.workDate.toString()); put("series", e.examSeries); put("year", e.examYear)
         put("type", e.examType.name); put("custom", e.customExamType); put("rate", e.rate); put("paid", e.paid)
         put("paymentDate", e.paymentDate?.toString()); put("note", e.paymentNote); put("created", e.createdAt); put("updated", e.updatedAt)
+        put("degreeYear", e.degreeYear?.name); put("semester", e.semester?.name)
     }
     private fun fromJson(o: JSONObject) = InvigilationEntry(
         o.getString("id"), LocalDate.parse(o.getString("date")), o.getString("series"), o.getInt("year"),
         ExamType.valueOf(o.getString("type")), o.opt("custom").takeUnless { it == JSONObject.NULL }?.toString()?.ifBlank { null }, o.getLong("rate"),
         o.optBoolean("paid"), o.optString("paymentDate").ifBlank { null }?.let(LocalDate::parse),
-        o.opt("note").takeUnless { it == JSONObject.NULL }?.toString()?.ifBlank { null }, o.optLong("created"), o.optLong("updated")
+        o.opt("note").takeUnless { it == JSONObject.NULL }?.toString()?.ifBlank { null }, o.optLong("created"), o.optLong("updated"),
+        o.optString("degreeYear").ifBlank { null }?.let { runCatching { DegreeYear.valueOf(it) }.getOrNull() },
+        o.optString("semester").ifBlank { null }?.let { runCatching { Semester.valueOf(it) }.getOrNull() }
     )
 }

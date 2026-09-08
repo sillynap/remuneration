@@ -33,4 +33,25 @@ class RemunerationCalculatorTest {
         assertEquals(false, unpaid.paid)
         assertEquals(null, unpaid.paymentDate)
     }
+
+    @Test fun semesterTitleIncludesDegreeYearAndSemester() {
+        val semester = entry("2026-01-01", 100).copy(
+            examSeries = "Spring",
+            examYear = 2026,
+            examType = ExamType.SEMESTER,
+            degreeYear = DegreeYear.SECOND,
+            semester = Semester.ODD
+        )
+        assertEquals("Spring Series, 2nd year Odd semester examination 2026", semester.title())
+    }
+
+    @Test fun nonSemesterTitleOmitsSemesterFields() {
+        val backlog = entry("2026-01-01", 100).copy(
+            examSeries = "Spring",
+            examType = ExamType.BACKLOG,
+            degreeYear = DegreeYear.FOURTH,
+            semester = Semester.EVEN
+        )
+        assertEquals("Spring Series, Backlog examination 2026", backlog.title())
+    }
 }

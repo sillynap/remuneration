@@ -5,6 +5,8 @@ import java.time.YearMonth
 
 enum class RemunerationType { INVIGILATION }
 enum class ExamType { SEMESTER, BACKLOG, SHORT, OTHER }
+enum class DegreeYear(val label: String) { FIRST("1st"), SECOND("2nd"), THIRD("3rd"), FOURTH("4th") }
+enum class Semester(val label: String) { ODD("Odd"), EVEN("Even") }
 
 data class RemunerationSettings(
     val type: RemunerationType = RemunerationType.INVIGILATION,
@@ -35,10 +37,19 @@ data class InvigilationEntry(
     val paymentDate: LocalDate? = null,
     val paymentNote: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val degreeYear: DegreeYear? = null,
+    val semester: Semester? = null
 ) {
     val displayExamType: String get() = if (examType == ExamType.OTHER) customExamType.orEmpty() else examType.name.lowercase().replaceFirstChar { it.uppercase() }
 }
+
+fun InvigilationEntry.title(): String =
+    if (examType == ExamType.SEMESTER && degreeYear != null && semester != null) {
+        "$examSeries Series, ${degreeYear.label} year ${semester.label} semester examination $examYear"
+    } else {
+        "$examSeries Series, $displayExamType examination $examYear"
+    }
 
 fun InvigilationEntry.withPaymentStatus(paid: Boolean, paymentDate: LocalDate? = if (paid) LocalDate.now() else null): InvigilationEntry =
     copy(paid = paid, paymentDate = paymentDate, updatedAt = System.currentTimeMillis())
