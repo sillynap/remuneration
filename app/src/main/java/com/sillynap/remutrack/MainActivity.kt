@@ -75,7 +75,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
             )
         } } }) { pad ->
             when (tab) {
-                0 -> Dashboard(Modifier.padding(pad), entries, settings, onPay = { vm.setPaid(setOf(it), true) })
+                0 -> Dashboard(Modifier.padding(pad), entries, settings, onEdit = { editing = it; showAdd = true }, onStatusChange = { entry -> vm.setPaid(setOf(entry.id), !entry.paid) })
                 1 -> EntryList(Modifier.padding(pad), entries.filterNot { it.paid }, settings, true, vm, onEdit = { editing = it; showAdd = true })
                 2 -> EntryList(Modifier.padding(pad), entries.filter { it.paid }, settings, false, vm, onEdit = { editing = it; showAdd = true })
                 else -> SettingsScreen(Modifier.padding(pad), settings, vm)
@@ -87,7 +87,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     }
 }
 
-@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, onPay: (String) -> Unit) {
+@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, onEdit: (InvigilationEntry) -> Unit, onStatusChange: (InvigilationEntry) -> Unit) {
     val s = RemunerationCalculator.summary(entries)
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Invigilation", style = MaterialTheme.typography.headlineSmall)
@@ -97,7 +97,12 @@ private fun RemuTrackApp(vm: RemuViewModel) {
             StatCard(Modifier.weight(1f), "Paid", "${s.paidCount}", "${settings.currency} ${s.paidAmount}")
         }
         if (entries.isEmpty()) Text("No sessions yet. Add your first session to start tracking.", modifier = Modifier.padding(top = 24.dp))
-        else { Text("Recent sessions", style = MaterialTheme.typography.titleMedium); entries.take(3).forEach { EntryRow(it, onPay = { if (!it.paid) onPay(it.id) }, onEdit = {}) } }
+        else {
+            Text("Recent sessions", style = MaterialTheme.typography.titleMedium)
+            entries.take(3).forEach { entry ->
+                key(entry.id) { EntryRow(entry, onStatusChange = { onStatusChange(entry) }, onEdit = { onEdit(entry) }) }
+            }
+        }
     }
 }
 
@@ -117,7 +122,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(shown, key = { it.id }) { e ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Top) {
                 if (unpaid) Checkbox(e.id in selected, { selected = if (it) selected + e.id else selected - e.id })
-                EntryRow(e, onPay = { vm.setPaid(setOf(e.id), paid = !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e })
+                EntryRow(e, onStatusChange = { vm.setPaid(setOf(e.id), paid = !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e })
             }
         } }
     }
@@ -143,16 +148,17 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     }
 }
 
-@Composable private fun EntryRow(e: InvigilationEntry, onPay: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
+@Composable private fun EntryRow(e: InvigilationEntry, onStatusChange: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = "${e.examSeries} series ${e.displayExamType} examination ${e.examYear}. Held date: ${e.workDate}.",
+                text = e.title(),
                 modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 3,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
+            Text("Held date: ${e.workDate}", style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = if (e.paid) "Paid on ${e.paymentDate ?: "date not recorded"}" else "Unpaid",
                 color = if (e.paid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
@@ -163,7 +169,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onEdit) { Text("Edit") }
-                TextButton(onClick = onPay) { Text(if (e.paid) "Mark unpaid" else "Mark paid") }
+                TextButton(onClick = onStatusChange) { Text(if (e.paid) "Mark unpaid" else "Mark paid") }
                 onDelete?.let { TextButton(onClick = it) { Text("Delete") } }
             }
         }
@@ -183,7 +189,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
 
 @Composable private fun EntryEditor(existing: InvigilationEntry?, settings: RemunerationSettings, onDismiss: () -> Unit, onSave: (InvigilationEntry) -> Unit) {
     val context = LocalContext.current
-    var date by remember { mutableStateOf(existing?.workDate ?: LocalDate.now()) }; var series by remember { mutableStateOf(existing?.examSeries ?: "") }; var year by remember { mutableStateOf(existing?.examYear?.toString() ?: date.year.toString()) }; var type by remember { mutableStateOf(existing?.examType ?: ExamType.SEMESTER) }; var custom by remember { mutableStateOf(existing?.customExamType ?: "") }; var note by remember { mutableStateOf(existing?.paymentNote ?: "") }; var error by remember { mutableStateOf<String?>(null) }
+    var date by remember { mutableStateOf(existing?.workDate ?: LocalDate.now()) }; var series by remember { mutableStateOf(existing?.examSeries ?: "") }; var year by remember { mutableStateOf(existing?.examYear?.toString() ?: date.year.toString()) }; var type by remember { mutableStateOf(existing?.examType ?: ExamType.SEMESTER) }; var custom by remember { mutableStateOf(existing?.customExamType ?: "") }; var degreeYear by remember { mutableStateOf(existing?.degreeYear) }; var semester by remember { mutableStateOf(existing?.semester) }; var note by remember { mutableStateOf(existing?.paymentNote ?: "") }; var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Add session" else "Edit session") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton({ DatePickerDialog(context, { _, y, m, d -> date = LocalDate.of(y, m + 1, d) }, date.year, date.monthValue - 1, date.dayOfMonth).show() }) { Text("Work date: $date") }
         OutlinedTextField(series, { series = it }, label = { Text("Exam series *") }); OutlinedTextField(year, { year = it.filter(Char::isDigit) }, label = { Text("Exam year *") })
@@ -201,8 +207,54 @@ private fun RemuTrackApp(vm: RemuViewModel) {
                 }
             }
         }
+        if (type == ExamType.SEMESTER) {
+            Text("Degree year *", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                DegreeYear.values().forEach { option ->
+                    FilterChip(
+                        modifier = Modifier.weight(1f),
+                        selected = degreeYear == option,
+                        onClick = { degreeYear = option },
+                        label = { Text(option.label) }
+                    )
+                }
+            }
+            Text("Semester *", style = MaterialTheme.typography.labelLarge)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Semester.values().forEach { option ->
+                    FilterChip(
+                        modifier = Modifier.weight(1f),
+                        selected = semester == option,
+                        onClick = { semester = option },
+                        label = { Text(option.label) }
+                    )
+                }
+            }
+        }
         if (type == ExamType.OTHER) OutlinedTextField(custom, { custom = it }, label = { Text("Custom exam type *") })
         OutlinedTextField(note, { note = it }, label = { Text("Payment note (optional)") })
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    } }, confirmButton = { TextButton({ val y = year.toIntOrNull(); if (series.isBlank() || y == null || (type == ExamType.OTHER && custom.isBlank())) error = "Complete all required fields" else onSave(InvigilationEntry(existing?.id ?: java.util.UUID.randomUUID().toString(), date, series.trim(), y, type, custom.takeIf { type == ExamType.OTHER }, existing?.rate ?: settings.rate, existing?.paid ?: false, existing?.paymentDate, note.trim().ifBlank { null }, existing?.createdAt ?: System.currentTimeMillis())) }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
+    } }, confirmButton = { TextButton({
+        val y = year.toIntOrNull()
+        val semesterFieldsValid = type != ExamType.SEMESTER || (degreeYear != null && semester != null)
+        if (series.isBlank() || y == null || !semesterFieldsValid || (type == ExamType.OTHER && custom.isBlank())) {
+            error = if (!semesterFieldsValid) "Select a degree year and semester" else "Complete all required fields"
+        } else {
+            onSave(InvigilationEntry(
+                id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                workDate = date,
+                examSeries = series.trim(),
+                examYear = y,
+                examType = type,
+                customExamType = custom.takeIf { type == ExamType.OTHER },
+                rate = existing?.rate ?: settings.rate,
+                paid = existing?.paid ?: false,
+                paymentDate = existing?.paymentDate,
+                paymentNote = note.trim().ifBlank { null },
+                createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+                degreeYear = degreeYear.takeIf { type == ExamType.SEMESTER },
+                semester = semester.takeIf { type == ExamType.SEMESTER }
+            ))
+        }
+    }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
 }
