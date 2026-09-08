@@ -274,8 +274,8 @@ private fun RemuTrackApp(vm: RemuViewModel) {
                 paymentDate = existing?.paymentDate,
                 paymentNote = note.trim().ifBlank { null },
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-                degreeYear = degreeYear.takeIf { it in setOf(ExamType.SEMESTER, ExamType.BACKLOG) },
-                semester = semester.takeIf { it in setOf(ExamType.SEMESTER, ExamType.BACKLOG) }
+                degreeYear = degreeYear.takeIf { type == ExamType.SEMESTER || type == ExamType.BACKLOG },
+                semester = semester.takeIf { type == ExamType.SEMESTER || type == ExamType.BACKLOG }
             ))
         }
     }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
