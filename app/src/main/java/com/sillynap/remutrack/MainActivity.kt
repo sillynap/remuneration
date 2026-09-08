@@ -7,8 +7,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
@@ -57,6 +60,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     var tab by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<InvigilationEntry?>(null) }
+    val dashboardScrollState = rememberLazyListState()
     val tabs = listOf(
         "Dashboard" to Icons.Filled.Home,
         "Unpaid" to Icons.Filled.PendingActions,
@@ -65,7 +69,14 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     )
     MaterialTheme(colorScheme = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF4355B9))) {
         Scaffold(topBar = { TopAppBar(title = { Text("RemuTrack") }) }, floatingActionButton = {
-            if (tab < 2) FloatingActionButton(onClick = { editing = null; showAdd = true }) { Text("+") }
+            if (tab < 2 && (!dashboardScrollState.isScrollInProgress || tab != 0)) {
+                FloatingActionButton(
+                    onClick = { editing = null; showAdd = true },
+                    modifier = Modifier.size(56.dp)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add invigilation entry", modifier = Modifier.size(28.dp))
+                }
+            }
         }, bottomBar = { NavigationBar { tabs.forEachIndexed { i, (label, icon) ->
             NavigationBarItem(
                 selected = tab == i,
@@ -75,7 +86,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
             )
         } } }) { pad ->
             when (tab) {
-                0 -> Dashboard(Modifier.padding(pad), entries, settings, onEdit = { editing = it; showAdd = true }, onStatusChange = { entry -> vm.setPaid(setOf(entry.id), !entry.paid) })
+                0 -> Dashboard(Modifier.padding(pad), entries, settings, dashboardScrollState, onEdit = { editing = it; showAdd = true }, onStatusChange = { entry -> vm.setPaid(setOf(entry.id), !entry.paid) })
                 1 -> EntryList(Modifier.padding(pad), entries.filterNot { it.paid }, settings, true, vm, onEdit = { editing = it; showAdd = true })
                 2 -> EntryList(Modifier.padding(pad), entries.filter { it.paid }, settings, false, vm, onEdit = { editing = it; showAdd = true })
                 else -> SettingsScreen(Modifier.padding(pad), settings, vm)
@@ -87,20 +98,30 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     }
 }
 
-@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, onEdit: (InvigilationEntry) -> Unit, onStatusChange: (InvigilationEntry) -> Unit) {
+@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, scrollState: LazyListState, onEdit: (InvigilationEntry) -> Unit, onStatusChange: (InvigilationEntry) -> Unit) {
     val s = RemunerationCalculator.summary(entries)
-    Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Invigilation", style = MaterialTheme.typography.headlineSmall)
-        Text("Your remuneration at a glance", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatCard(Modifier.weight(1f), "Unpaid", "${s.unpaidCount}", "${settings.currency} ${s.unpaidAmount}")
-            StatCard(Modifier.weight(1f), "Paid", "${s.paidCount}", "${settings.currency} ${s.paidAmount}")
+    LazyColumn(
+        state = scrollState,
+        modifier = modifier,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text("Invigilation", style = MaterialTheme.typography.headlineSmall)
+            Text("Your remuneration at a glance", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (entries.isEmpty()) Text("No sessions yet. Add your first session to start tracking.", modifier = Modifier.padding(top = 24.dp))
-        else {
-            Text("Recent sessions", style = MaterialTheme.typography.titleMedium)
-            entries.take(3).forEach { entry ->
-                key(entry.id) { EntryRow(entry, onStatusChange = { onStatusChange(entry) }, onEdit = { onEdit(entry) }) }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard(Modifier.weight(1f), "Unpaid", "${s.unpaidCount}", "${settings.currency} ${s.unpaidAmount}")
+                StatCard(Modifier.weight(1f), "Paid", "${s.paidCount}", "${settings.currency} ${s.paidAmount}")
+            }
+        }
+        if (entries.isEmpty()) {
+            item { Text("No sessions yet. Add your first session to start tracking.", modifier = Modifier.padding(top = 24.dp)) }
+        } else {
+            item { Text("Recent sessions", style = MaterialTheme.typography.titleMedium) }
+            items(entries.take(3), key = { it.id }) { entry ->
+                EntryRow(entry, settings.currency, onStatusChange = { onStatusChange(entry) }, onEdit = { onEdit(entry) })
             }
         }
     }
@@ -122,7 +143,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(shown, key = { it.id }) { e ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Top) {
                 if (unpaid) Checkbox(e.id in selected, { selected = if (it) selected + e.id else selected - e.id })
-                EntryRow(e, onStatusChange = { vm.setPaid(setOf(e.id), paid = !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e })
+                EntryRow(e, settings.currency, onStatusChange = { vm.setPaid(setOf(e.id), paid = !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e })
             }
         } }
     }
@@ -148,17 +169,18 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     }
 }
 
-@Composable private fun EntryRow(e: InvigilationEntry, onStatusChange: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
+@Composable private fun EntryRow(e: InvigilationEntry, currency: String, onStatusChange: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 text = e.title(),
                 modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
                 maxLines = 3,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
-            Text("Held date: ${e.workDate}", style = MaterialTheme.typography.bodyMedium)
+            Text("Held date: ${e.workDate}", style = MaterialTheme.typography.bodySmall)
+            Text("Rate: $currency ${e.rate}", style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = if (e.paid) "Paid on ${e.paymentDate ?: "date not recorded"}" else "Unpaid",
                 color = if (e.paid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
@@ -207,7 +229,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
                 }
             }
         }
-        if (type == ExamType.SEMESTER) {
+        if (type == ExamType.SEMESTER || type == ExamType.BACKLOG) {
             Text("Degree year *", style = MaterialTheme.typography.labelLarge)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 DegreeYear.values().forEach { option ->
@@ -236,7 +258,7 @@ private fun RemuTrackApp(vm: RemuViewModel) {
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     } }, confirmButton = { TextButton({
         val y = year.toIntOrNull()
-        val semesterFieldsValid = type != ExamType.SEMESTER || (degreeYear != null && semester != null)
+        val semesterFieldsValid = type !in setOf(ExamType.SEMESTER, ExamType.BACKLOG) || (degreeYear != null && semester != null)
         if (series.isBlank() || y == null || !semesterFieldsValid || (type == ExamType.OTHER && custom.isBlank())) {
             error = if (!semesterFieldsValid) "Select a degree year and semester" else "Complete all required fields"
         } else {
@@ -252,8 +274,8 @@ private fun RemuTrackApp(vm: RemuViewModel) {
                 paymentDate = existing?.paymentDate,
                 paymentNote = note.trim().ifBlank { null },
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-                degreeYear = degreeYear.takeIf { type == ExamType.SEMESTER },
-                semester = semester.takeIf { type == ExamType.SEMESTER }
+                degreeYear = degreeYear.takeIf { it in setOf(ExamType.SEMESTER, ExamType.BACKLOG) },
+                semester = semester.takeIf { it in setOf(ExamType.SEMESTER, ExamType.BACKLOG) }
             ))
         }
     }) { Text("Save") } }, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })

@@ -54,4 +54,19 @@ class RemunerationCalculatorTest {
         )
         assertEquals("Spring Series, Backlog examination 2026", backlog.title())
     }
+
+    @Test fun backlogTitleIncludesDegreeYearAndSemester() {
+        val backlog = entry("2026-01-01", 100).copy(
+            examSeries = "Spring",
+            examType = ExamType.BACKLOG,
+            degreeYear = DegreeYear.THIRD,
+            semester = Semester.EVEN
+        )
+        assertEquals("Spring Series, 3rd year Even semester examination 2026", backlog.title())
+    }
+
+    @Test fun legacyBacklogWithoutSemesterFieldsRemainsReadable() {
+        val backlog = entry("2026-01-01", 100).copy(examType = ExamType.BACKLOG)
+        assertEquals("Series Series, Backlog examination 2026", backlog.title())
+    }
 }
