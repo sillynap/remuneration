@@ -14,4 +14,14 @@ class RemunerationCalculatorTest {
         val s = RemunerationCalculator.summary(listOf(entry("2026-01-01", 100), entry("2026-01-02", 250, true)))
         assertEquals(1, s.unpaidCount); assertEquals(100, s.unpaidAmount); assertEquals(1, s.paidCount); assertEquals(250, s.paidAmount)
     }
+
+    @Test fun settingsCodecRoundTripsRateAndCurrency() {
+        val settings = RemunerationSettings(rate = 850, currency = "bdt")
+        assertEquals(settings.copy(currency = "BDT"), SettingsCodec.decode(SettingsCodec.encode(settings)))
+    }
+
+    @Test fun settingsCodecRejectsMalformedValues() {
+        assertEquals(null, SettingsCodec.decode("not-a-rate|BDT"))
+        assertEquals(null, SettingsCodec.decode("850|"))
+    }
 }
