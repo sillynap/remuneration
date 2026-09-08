@@ -45,7 +45,7 @@ data class InvigilationEntry(
 }
 
 fun InvigilationEntry.title(): String =
-    if (examType == ExamType.SEMESTER && degreeYear != null && semester != null) {
+    if (examType in setOf(ExamType.SEMESTER, ExamType.BACKLOG) && degreeYear != null && semester != null) {
         "$examSeries Series, ${degreeYear.label} year ${semester.label} semester examination $examYear"
     } else {
         "$examSeries Series, $displayExamType examination $examYear"
