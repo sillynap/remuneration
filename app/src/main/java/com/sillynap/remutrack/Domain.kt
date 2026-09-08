@@ -12,6 +12,17 @@ data class RemunerationSettings(
     val currency: String = "BDT"
 )
 
+object SettingsCodec {
+    fun encode(settings: RemunerationSettings): String = "${settings.rate}|${settings.currency}"
+
+    fun decode(raw: String?): RemunerationSettings? {
+        val parts = raw?.split('|', limit = 2) ?: return null
+        val rate = parts.firstOrNull()?.toLongOrNull() ?: return null
+        val currency = parts.getOrNull(1)?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
+        return RemunerationSettings(rate = rate, currency = currency)
+    }
+}
+
 data class InvigilationEntry(
     val id: String,
     val workDate: LocalDate,

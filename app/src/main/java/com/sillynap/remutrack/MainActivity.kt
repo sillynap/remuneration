@@ -142,7 +142,20 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (existing == null) "Add session" else "Edit session") }, text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         TextButton({ DatePickerDialog(context, { _, y, m, d -> date = LocalDate.of(y, m + 1, d) }, date.year, date.monthValue - 1, date.dayOfMonth).show() }) { Text("Work date: $date") }
         OutlinedTextField(series, { series = it }, label = { Text("Exam series *") }); OutlinedTextField(year, { year = it.filter(Char::isDigit) }, label = { Text("Exam year *") })
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { ExamType.values().forEach { FilterChip(selected = type == it, onClick = { type = it }, label = { Text(it.name.lowercase().replaceFirstChar { c -> c.uppercase() }) }) } }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            ExamType.values().toList().chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    row.forEach { examType ->
+                        FilterChip(
+                            modifier = Modifier.weight(1f),
+                            selected = type == examType,
+                            onClick = { type = examType },
+                            label = { Text(examType.name.lowercase().replaceFirstChar { c -> c.uppercase() }) }
+                        )
+                    }
+                }
+            }
+        }
         if (type == ExamType.OTHER) OutlinedTextField(custom, { custom = it }, label = { Text("Custom exam type *") })
         OutlinedTextField(note, { note = it }, label = { Text("Payment note (optional)") })
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

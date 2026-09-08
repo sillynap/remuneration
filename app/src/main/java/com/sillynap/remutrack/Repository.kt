@@ -9,8 +9,28 @@ import java.util.UUID
 class RemuRepository(context: Context) {
     private val prefs = context.getSharedPreferences("remutrack", Context.MODE_PRIVATE)
     private val entriesKey = "entries"
-    fun settings(): RemunerationSettings = RemunerationSettings(rate = prefs.getLong("rate", 0), currency = prefs.getString("currency", "BDT") ?: "BDT")
-    fun saveSettings(settings: RemunerationSettings) { prefs.edit().putLong("rate", settings.rate).putString("currency", settings.currency).apply() }
+    private val invigilationSettingsKey = "settings.invigilation"
+
+    fun settings(): RemunerationSettings =
+        SettingsCodec.decode(prefs.getString(invigilationSettingsKey, null))
+            ?: legacySettings()?.also { saveSettings(it) }
+            ?: RemunerationSettings()
+
+    fun saveSettings(settings: RemunerationSettings) {
+        check(settings.rate >= 0) { "Rate cannot be negative" }
+        check(settings.currency.isNotBlank()) { "Currency cannot be blank" }
+        check(prefs.edit().putString(invigilationSettingsKey, SettingsCodec.encode(settings)).commit()) {
+            "Unable to persist remuneration settings"
+        }
+    }
+
+    private fun legacySettings(): RemunerationSettings? {
+        if (!prefs.contains("rate") && !prefs.contains("currency")) return null
+        return RemunerationSettings(
+            rate = prefs.getLong("rate", 0),
+            currency = prefs.getString("currency", "BDT") ?: "BDT"
+        )
+    }
     fun entries(): List<InvigilationEntry> {
         val array = JSONArray(prefs.getString(entriesKey, "[]"))
         return (0 until array.length()).map { fromJson(array.getJSONObject(it)) }
