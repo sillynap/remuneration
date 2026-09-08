@@ -24,4 +24,13 @@ class RemunerationCalculatorTest {
         assertEquals(null, SettingsCodec.decode("not-a-rate|BDT"))
         assertEquals(null, SettingsCodec.decode("850|"))
     }
+
+    @Test fun paymentStatusTransitionClearsDateWhenReturningToUnpaid() {
+        val paid = entry("2026-01-01", 100).withPaymentStatus(true, LocalDate.parse("2026-01-05"))
+        val unpaid = paid.withPaymentStatus(false)
+        assertEquals(true, paid.paid)
+        assertEquals(LocalDate.parse("2026-01-05"), paid.paymentDate)
+        assertEquals(false, unpaid.paid)
+        assertEquals(null, unpaid.paymentDate)
+    }
 }

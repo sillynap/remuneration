@@ -2,23 +2,28 @@ package com.sillynap.remutrack
 
 import android.app.DatePickerDialog
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PendingActions
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,7 +43,7 @@ class RemuViewModel(private val repo: RemuRepository) : ViewModel() {
     fun upsert(entry: InvigilationEntry) { val next = _entries.value.filterNot { it.id == entry.id } + entry.copy(updatedAt = System.currentTimeMillis()); repo.save(next); _entries.value = next.sortedByDescending { it.workDate } }
     fun delete(entry: InvigilationEntry) { val next = _entries.value - entry; repo.save(next); _entries.value = next }
     fun setPaid(ids: Set<String>, paid: Boolean, paymentDate: LocalDate? = if (paid) LocalDate.now() else null) {
-        val next = _entries.value.map { if (it.id in ids) it.copy(paid = paid, paymentDate = paymentDate, updatedAt = System.currentTimeMillis()) else it }
+        val next = _entries.value.map { if (it.id in ids) it.withPaymentStatus(paid, paymentDate) else it }
         repo.save(next); _entries.value = next.sortedByDescending { it.workDate }
     }
     fun saveSettings(rate: Long, currency: String) { val s = RemunerationSettings(rate = rate, currency = currency); repo.saveSettings(s); _settings.value = s }
@@ -52,22 +57,37 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     var tab by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<InvigilationEntry?>(null) }
+    val tabs = listOf(
+        "Dashboard" to Icons.Filled.Home,
+        "Unpaid" to Icons.Filled.PendingActions,
+        "Paid" to Icons.Filled.History,
+        "Settings" to Icons.Filled.Settings
+    )
     MaterialTheme(colorScheme = lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF4355B9))) {
         Scaffold(topBar = { TopAppBar(title = { Text("RemuTrack") }) }, floatingActionButton = {
             if (tab < 2) FloatingActionButton(onClick = { editing = null; showAdd = true }) { Text("+") }
-        }, bottomBar = { NavigationBar { listOf("Dashboard", "Unpaid", "Paid", "Settings").forEachIndexed { i, label -> NavigationBarItem(selected = tab == i, onClick = { tab = i }, icon = { Text(label.take(1)) }, label = { Text(label) }) } } }) { pad ->
+        }, bottomBar = { NavigationBar { tabs.forEachIndexed { i, (label, icon) ->
+            NavigationBarItem(
+                selected = tab == i,
+                onClick = { tab = i },
+                icon = { Icon(icon, contentDescription = label) },
+                label = { Text(label) }
+            )
+        } } }) { pad ->
             when (tab) {
-                0 -> Dashboard(Modifier.padding(pad), entries, settings, onAdd = { showAdd = true }, onPay = { vm.setPaid(setOf(it), true) })
+                0 -> Dashboard(Modifier.padding(pad), entries, settings, onPay = { vm.setPaid(setOf(it), true) })
                 1 -> EntryList(Modifier.padding(pad), entries.filterNot { it.paid }, settings, true, vm, onEdit = { editing = it; showAdd = true })
                 2 -> EntryList(Modifier.padding(pad), entries.filter { it.paid }, settings, false, vm, onEdit = { editing = it; showAdd = true })
                 else -> SettingsScreen(Modifier.padding(pad), settings, vm)
             }
         }
-        if (showAdd) EntryEditor(editing, settings, onDismiss = { showAdd = false }, onSave = { vm.upsert(it); showAdd = false })
+        if (showAdd) key(editing?.id ?: "new") {
+            EntryEditor(editing, settings, onDismiss = { showAdd = false }, onSave = { vm.upsert(it); showAdd = false })
+        }
     }
 }
 
-@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, onAdd: () -> Unit, onPay: (String) -> Unit) {
+@Composable private fun Dashboard(modifier: Modifier, entries: List<InvigilationEntry>, settings: RemunerationSettings, onPay: (String) -> Unit) {
     val s = RemunerationCalculator.summary(entries)
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Invigilation", style = MaterialTheme.typography.headlineSmall)
@@ -76,9 +96,8 @@ private fun RemuTrackApp(vm: RemuViewModel) {
             StatCard(Modifier.weight(1f), "Unpaid", "${s.unpaidCount}", "${settings.currency} ${s.unpaidAmount}")
             StatCard(Modifier.weight(1f), "Paid", "${s.paidCount}", "${settings.currency} ${s.paidAmount}")
         }
-        Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp)) { Text("This month", style = MaterialTheme.typography.titleMedium); Text("${settings.currency} ${s.monthAmount}", style = MaterialTheme.typography.headlineMedium) } }
         if (entries.isEmpty()) Text("No sessions yet. Add your first session to start tracking.", modifier = Modifier.padding(top = 24.dp))
-        else { Text("Recent sessions", style = MaterialTheme.typography.titleMedium); entries.take(3).forEach { EntryRow(it, settings.currency, onPay = { if (!it.paid) onPay(it.id) }, onEdit = {}) } }
+        else { Text("Recent sessions", style = MaterialTheme.typography.titleMedium); entries.take(3).forEach { EntryRow(it, onPay = { if (!it.paid) onPay(it.id) }, onEdit = {}) } }
     }
 }
 
@@ -96,7 +115,10 @@ private fun RemuTrackApp(vm: RemuViewModel) {
         if (unpaid && selected.isNotEmpty()) Button({ vm.setPaid(selected, true); selected = emptySet() }) { Text("Mark ${selected.size} paid") }
         if (unpaid) OutlinedButton({ showRange = true }) { Text("Mark unpaid by date range") }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(shown, key = { it.id }) { e ->
-            Row { if (unpaid) Checkbox(e.id in selected, { selected = if (it) selected + e.id else selected - e.id }) ; EntryRow(e, settings.currency, onPay = { vm.setPaid(setOf(e.id), !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e }) }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.Top) {
+                if (unpaid) Checkbox(e.id in selected, { selected = if (it) selected + e.id else selected - e.id })
+                EntryRow(e, onPay = { vm.setPaid(setOf(e.id), paid = !e.paid) }, onEdit = { onEdit(e) }, onDelete = { confirmDelete = e })
+            }
         } }
     }
     confirmDelete?.let { e -> AlertDialog(onDismissRequest = { confirmDelete = null }, title = { Text("Delete session?") }, text = { Text("This cannot be undone.") }, confirmButton = { TextButton({ vm.delete(e); confirmDelete = null }) { Text("Delete") } }, dismissButton = { TextButton({ confirmDelete = null }) { Text("Cancel") } }) }
@@ -121,18 +143,41 @@ private fun RemuTrackApp(vm: RemuViewModel) {
     }
 }
 
-@Composable private fun EntryRow(e: InvigilationEntry, currency: String, onPay: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
-    Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(e.examSeries, style = MaterialTheme.typography.titleMedium); Text("$currency ${e.rate}") }
-        Text("${e.workDate} • ${e.examYear} • ${e.displayExamType}")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text(if (e.paid) "Paid ${e.paymentDate ?: ""}" else "Unpaid", color = if (e.paid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error); Spacer(Modifier.weight(1f)); TextButton(onEdit) { Text("Edit") }; TextButton(onPay) { Text(if (e.paid) "Unpaid" else "Paid") }; onDelete?.let { TextButton(it) { Text("Delete") } } }
-    } }
+@Composable private fun EntryRow(e: InvigilationEntry, onPay: () -> Unit, onEdit: () -> Unit, onDelete: (() -> Unit)? = null) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "${e.examSeries} series ${e.displayExamType} examination ${e.examYear}. Held date: ${e.workDate}.",
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (e.paid) "Paid on ${e.paymentDate ?: "date not recorded"}" else "Unpaid",
+                color = if (e.paid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.titleSmall
+            )
+            e.paymentNote?.takeIf { it.isNotBlank() }?.let {
+                Text("Payment note: $it", style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onEdit) { Text("Edit") }
+                TextButton(onClick = onPay) { Text(if (e.paid) "Mark unpaid" else "Mark paid") }
+                onDelete?.let { TextButton(onClick = it) { Text("Delete") } }
+            }
+        }
+    }
 }
 
 @Composable private fun SettingsScreen(modifier: Modifier, settings: RemunerationSettings, vm: RemuViewModel) {
+    val context = LocalContext.current
     var rate by remember(settings) { mutableStateOf(settings.rate.toString()) }; var currency by remember(settings) { mutableStateOf(settings.currency) }
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { Text("Settings", style = MaterialTheme.typography.headlineSmall); Text("Invigilation", style = MaterialTheme.typography.titleMedium); Text("Changes apply only to new sessions.")
-        OutlinedTextField(rate, { rate = it.filter(Char::isDigit) }, Modifier.fillMaxWidth(), label = { Text("Current rate") }); OutlinedTextField(currency, { currency = it.take(6).uppercase() }, Modifier.fillMaxWidth(), label = { Text("Currency") }); Button({ vm.saveSettings(rate.toLongOrNull() ?: 0, currency.ifBlank { "BDT" }) }) { Text("Save settings") }
+        OutlinedTextField(rate, { rate = it.filter(Char::isDigit) }, Modifier.fillMaxWidth(), label = { Text("Current rate") }); OutlinedTextField(currency, { currency = it.take(6).uppercase() }, Modifier.fillMaxWidth(), label = { Text("Currency") }); Button({
+            vm.saveSettings(rate.toLongOrNull() ?: 0, currency.ifBlank { "BDT" })
+            Toast.makeText(context, "Settings updated", Toast.LENGTH_SHORT).show()
+        }) { Text("Save settings") }
     }
 }
 

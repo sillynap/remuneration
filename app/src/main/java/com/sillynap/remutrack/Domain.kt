@@ -40,6 +40,9 @@ data class InvigilationEntry(
     val displayExamType: String get() = if (examType == ExamType.OTHER) customExamType.orEmpty() else examType.name.lowercase().replaceFirstChar { it.uppercase() }
 }
 
+fun InvigilationEntry.withPaymentStatus(paid: Boolean, paymentDate: LocalDate? = if (paid) LocalDate.now() else null): InvigilationEntry =
+    copy(paid = paid, paymentDate = paymentDate, updatedAt = System.currentTimeMillis())
+
 data class Summary(
     val unpaidCount: Int,
     val unpaidAmount: Long,
