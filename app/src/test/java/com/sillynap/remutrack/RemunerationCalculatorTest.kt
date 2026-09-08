@@ -45,14 +45,14 @@ class RemunerationCalculatorTest {
         assertEquals("Spring Series, 2nd year Odd semester examination 2026", semester.title())
     }
 
-    @Test fun nonSemesterTitleOmitsSemesterFields() {
+    @Test fun backlogTitleUsesSemesterFieldsWhenPresent() {
         val backlog = entry("2026-01-01", 100).copy(
             examSeries = "Spring",
             examType = ExamType.BACKLOG,
             degreeYear = DegreeYear.FOURTH,
             semester = Semester.EVEN
         )
-        assertEquals("Spring Series, Backlog examination 2026", backlog.title())
+        assertEquals("Spring Series, 4th year Even semester examination 2026", backlog.title())
     }
 
     @Test fun backlogTitleIncludesDegreeYearAndSemester() {
