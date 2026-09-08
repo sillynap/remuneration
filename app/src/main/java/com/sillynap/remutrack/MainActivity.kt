@@ -44,6 +44,7 @@ class RemuViewModel(private val repo: RemuRepository) : ViewModel() {
     fun saveSettings(rate: Long, currency: String) { val s = RemunerationSettings(rate = rate, currency = currency); repo.saveSettings(s); _settings.value = s }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RemuTrackApp(vm: RemuViewModel) {
     val entries by vm.entries.collectAsStateWithLifecycle()
